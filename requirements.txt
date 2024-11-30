@@ -1,10 +1,10 @@
 streamlit
 pandas
 plotly
-scikit-learn
+scikit-learn==1.0.2
 scipy
 fpdf
 openpyxl
 joblib
 numpy
-PyCaret
+pycaret==3.0.0

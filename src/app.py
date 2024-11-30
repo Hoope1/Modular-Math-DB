@@ -1,56 +1,73 @@
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import streamlit as st
 import pandas as pd
-from src.components.ui_elements import render_header, render_footer
-from src.components.table import render_participants_table
-from src.components.forms import render_participant_form, render_test_form
 from src.utils.data_processing import load_data, save_data
-from src.utils.predictions import generate_prediction_chart
+from src.utils.predictions import (
+    train_h2o_automl,
+    generate_h2o_predictions,
+    generate_prediction_chart,
+)
 from src.utils.report_generation import generate_report
+import os
 
 # Konfigurationsoptionen
-st.set_page_config(page_title="Mathematik-Kurs Management", layout="wide")
+MODEL_PATH = "models/h2o_automl_model"
+DATA_PATH = "data/participants_data.csv"
 
 # Daten laden
-participants = load_data("data/participants.csv")
-tests = load_data("data/tests.csv")
+data = load_data(DATA_PATH)
 
-# UI-Header
-render_header()
+# Streamlit UI
+st.title("Mathematik-Kurs Teilnehmerverwaltung")
 
-# Teilnehmerverwaltung
-st.subheader("Teilnehmerverwaltung")
-participants = render_participants_table(participants)
-if st.button("Teilnehmer hinzufügen"):
-    new_participant = render_participant_form()
-    if new_participant:
-        participants = participants.append(new_participant, ignore_index=True)
-        save_data(participants, "data/participants.csv")
+# Teilnehmer-Tabellendarstellung
+st.header("Teilnehmerübersicht")
+st.dataframe(data)
 
-# Tests zu Teilnehmern hinzufügen
-st.subheader("Tests hinzufügen")
-if st.button("Test hinzufügen"):
-    selected_participant = st.selectbox("Teilnehmer auswählen", participants["Name"])
-    new_test = render_test_form(selected_participant)
-    if new_test:
-        tests = tests.append(new_test, ignore_index=True)
-        save_data(tests, "data/tests.csv")
+# Teilnehmer hinzufügen
+st.subheader("Teilnehmer hinzufügen")
+with st.form("add_participant"):
+    name = st.text_input("Name")
+    sv_number = st.text_input("SV-Nummer")
+    entry_date = st.date_input("Eintrittsdatum")
+    exit_date = st.date_input("Austrittsdatum")
+    target_score = st.number_input("Zielwert (%)", min_value=0, max_value=100, value=50)
+    submit = st.form_submit_button("Hinzufügen")
 
-# Prognose-Diagramm
-st.subheader("Prognose")
-selected_participant = st.selectbox("Teilnehmer auswählen für Prognose", participants["Name"])
-chart = generate_prediction_chart(selected_participant, tests)
-st.plotly_chart(chart, use_container_width=True)
+    if submit:
+        new_participant = {
+            "Name": name,
+            "SV-Nummer": sv_number,
+            "Eintrittsdatum": entry_date,
+            "Austrittsdatum": exit_date,
+            "Zielwert (%)": target_score,
+        }
+        data = data.append(new_participant, ignore_index=True)
+        save_data(data, DATA_PATH)
+        st.success("Teilnehmer hinzugefügt!")
 
-# Berichtsgenerierung
-st.subheader("Bericht erstellen")
-if st.button("Bericht generieren"):
-    selected_participant = st.selectbox("Teilnehmer auswählen für Bericht", participants["Name"])
-    generate_report(selected_participant, participants, tests)
-    st.success("Bericht wurde erfolgreich erstellt!")
+# Vorhersagen generieren
+st.subheader("Vorhersagen generieren")
+participant = st.selectbox("Teilnehmer auswählen", data["Name"].unique())
+if st.button("Vorhersagen erstellen"):
+    participant_data = data[data["Name"] == participant]
 
-# UI-Footer
-render_footer()
+    # H2O AutoML trainieren
+    train_h2o_automl(data, "Zielwert (%)", MODEL_PATH)
+
+    # Vorhersagen generieren
+    predictions = generate_h2o_predictions(participant_data, MODEL_PATH)
+
+    # Diagramm erstellen
+    chart = generate_prediction_chart(participant_data, predictions, participant)
+    st.plotly_chart(chart)
+
+# Bericht generieren
+st.subheader("Bericht generieren")
+report_participant = st.selectbox("Teilnehmer für Bericht", data["Name"].unique())
+if st.button("Bericht erstellen"):
+    report_path = generate_report(report_participant, data, MODEL_PATH)
+    st.success(f"Bericht erstellt: {report_path}")
+
+# Fußzeile
+st.write("---")
+st.write("Mathematik-Kurs Teilnehmerverwaltung - Erstellt mit H2O AutoML")

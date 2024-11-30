@@ -2,9 +2,9 @@ streamlit
 pandas
 plotly
 scikit-learn==1.0.2
-scipy
+scipy>=1.8.0
 fpdf
 openpyxl
 joblib
-numpy
+numpy>=1.23.5
 pycaret==3.0.0

@@ -1,115 +1,101 @@
 import pandas as pd
+import h2o
+from h2o.automl import H2OAutoML
 import plotly.graph_objects as go
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.externals import joblib
-import numpy as np
 
-def train_model(tests: pd.DataFrame, save_path: str = "models/prediction_model.pkl"):
+# Initialisiere H2O-Server
+h2o.init()
+
+def train_h2o_automl(data: pd.DataFrame, target_column: str, model_path: str):
     """
-    Trains a Random Forest Regressor and saves the trained model.
-    
+    Trainiert ein H2O AutoML-Modell und speichert es.
+
     Args:
-        tests (pd.DataFrame): DataFrame containing test data.
-        save_path (str): Path to save the trained model.
+        data (pd.DataFrame): Der Datensatz, der das Training unterstützt.
+        target_column (str): Der Zielwert (Target).
+        model_path (str): Der Speicherpfad für das Modell.
     """
-    tests["Datum"] = pd.to_datetime(tests["Datum"]).astype(int) / 10**9
-    X = tests[["Datum", "Textaufgaben", "Raumvorstellung", "Gleichungen", "Brüche", "Grundrechenarten", "Zahlenraum"]]
-    y = tests["Gesamtpunkte"]
+    # Daten vorbereiten
+    h2o_data = h2o.H2OFrame(data)
+    x_columns = [col for col in data.columns if col != target_column]
+    y_column = target_column
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # H2O AutoML-Training
+    aml = H2OAutoML(max_models=10, seed=42)
+    aml.train(x=x_columns, y=y_column, training_frame=h2o_data)
 
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
+    # Bestes Modell speichern
+    h2o.save_model(aml.leader, path=model_path)
 
-    joblib.dump(model, save_path)
-
-def load_model(model_path: str):
+def load_h2o_model(model_path: str):
     """
-    Loads the trained model.
-    
+    Lädt ein gespeichertes H2O-Modell.
+
     Args:
-        model_path (str): Path to the saved model.
-    
+        model_path (str): Der Pfad zum gespeicherten Modell.
+
     Returns:
-        object: The trained model.
+        H2OEstimator: Das geladene Modell.
     """
-    return joblib.load(model_path)
+    return h2o.load_model(model_path)
 
-def generate_predictions(participant: str, tests: pd.DataFrame, model):
+def generate_h2o_predictions(data: pd.DataFrame, model_path: str):
     """
-    Generates predictions for the next 60 days for a participant.
-    
+    Generiert Vorhersagen basierend auf einem H2O AutoML-Modell.
+
     Args:
-        participant (str): Name of the participant.
-        tests (pd.DataFrame): DataFrame of tests.
-        model: The trained model.
-    
+        data (pd.DataFrame): Die Eingabedaten für die Vorhersagen.
+        model_path (str): Der Pfad zum gespeicherten Modell.
+
     Returns:
-        pd.DataFrame: DataFrame with predicted scores.
+        pd.DataFrame: Ein DataFrame mit den Vorhersagen.
     """
-    participant_tests = tests[tests["Teilnehmer"] == participant]
-    if participant_tests.empty:
-        return pd.DataFrame()
+    h2o_data = h2o.H2OFrame(data)
+    model = load_h2o_model(model_path)
+    predictions = model.predict(h2o_data).as_data_frame()
+    return predictions
 
-    last_test_date = pd.to_datetime(participant_tests["Datum"]).max()
-    future_dates = pd.date_range(last_test_date, periods=60, freq="D")
-    future_timestamps = future_dates.astype(int) / 10**9
-
-    prediction_data = pd.DataFrame({
-        "Datum": future_timestamps,
-        "Textaufgaben": np.zeros(60),
-        "Raumvorstellung": np.zeros(60),
-        "Gleichungen": np.zeros(60),
-        "Brüche": np.zeros(60),
-        "Grundrechenarten": np.zeros(60),
-        "Zahlenraum": np.zeros(60),
-    })
-
-    prediction_data["Predicted (%)"] = model.predict(prediction_data)
-    prediction_data["Datum"] = future_dates
-    return prediction_data
-
-def generate_prediction_chart(participant: str, tests: pd.DataFrame):
+def generate_prediction_chart(data: pd.DataFrame, predictions: pd.DataFrame, participant: str):
     """
-    Generates a line chart with predictions and historical test scores.
-    
+    Generiert ein Vorhersagediagramm für einen Teilnehmer.
+
     Args:
-        participant (str): Name of the participant.
-        tests (pd.DataFrame): DataFrame of tests.
-    
-    Returns:
-        go.Figure: Plotly figure with the prediction chart.
-    """
-    model = load_model("models/prediction_model.pkl")
-    predictions = generate_predictions(participant, tests, model)
+        data (pd.DataFrame): Historische Daten des Teilnehmers.
+        predictions (pd.DataFrame): Vorhergesagte Werte.
+        participant (str): Der Name des Teilnehmers.
 
-    participant_tests = tests[tests["Teilnehmer"] == participant]
-    historical_dates = pd.to_datetime(participant_tests["Datum"])
-    historical_scores = participant_tests["Gesamt (%)"]
+    Returns:
+        go.Figure: Ein Plotly-Diagramm mit den historischen und vorhergesagten Werten.
+    """
+    historical_data = pd.to_datetime(data["Datum"])
+    historical_scores = data["Gesamt (%)"]
+
+    future_dates = pd.date_range(start=data["Datum"].max(), periods=len(predictions), freq="D")
+    predicted_scores = predictions.iloc[:, 0]
 
     fig = go.Figure()
 
+    # Historische Daten
     fig.add_trace(go.Scatter(
-        x=historical_dates,
+        x=historical_data,
         y=historical_scores,
         mode="lines+markers",
-        name="Historische Werte"
+        name="Historisch"
     ))
 
-    if not predictions.empty:
-        fig.add_trace(go.Scatter(
-            x=predictions["Datum"],
-            y=predictions["Predicted (%)"],
-            mode="lines",
-            name="Vorhersage"
-        ))
+    # Vorhersagen
+    fig.add_trace(go.Scatter(
+        x=future_dates,
+        y=predicted_scores,
+        mode="lines",
+        name="Vorhersagen"
+    ))
 
     fig.update_layout(
-        title=f"Prognose für {participant}",
+        title=f"Vorhersagediagramm für {participant}",
         xaxis_title="Datum",
         yaxis_title="Prozent (%)",
-        yaxis=dict(range=[0, 100]),
-        xaxis=dict(title="Tage (-30 bis +30)")
+        yaxis=dict(range=[0, 100])
     )
+
     return fig

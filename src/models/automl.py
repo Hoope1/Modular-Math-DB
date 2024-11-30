@@ -1,9 +1,11 @@
-from pycaret.regression import setup, compare_models, save_model, load_model
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.externals import joblib  # Zum Speichern und Laden von Modellen
 import pandas as pd
 
-def train_automl_model(tests: pd.DataFrame, save_path: str = "models/prediction_model.pkl"):
+def train_model(tests: pd.DataFrame, save_path: str = "models/prediction_model.pkl"):
     """
-    Trains an AutoML model using PyCaret and saves the best model.
+    Trains a machine learning model and saves it.
     
     Args:
         tests (pd.DataFrame): DataFrame containing test data.
@@ -11,22 +13,23 @@ def train_automl_model(tests: pd.DataFrame, save_path: str = "models/prediction_
     """
     # Prepare training data
     training_data = tests.copy()
-    training_data["Datum"] = pd.to_datetime(training_data["Datum"]).astype(int) / 10**9  # Convert dates to timestamps
-    features = ["Datum", "Textaufgaben", "Raumvorstellung", "Gleichungen", "Brüche", "Grundrechenarten", "Zahlenraum"]
-    target = "Gesamtpunkte"
+    training_data["Datum"] = pd.to_datetime(training_data["Datum"]).astype(int) / 10**9  # Timestamps
+    X = training_data[["Datum", "Textaufgaben", "Raumvorstellung", "Gleichungen", "Brüche", "Grundrechenarten", "Zahlenraum"]]
+    y = training_data["Gesamtpunkte"]
 
-    # PyCaret setup
-    setup(data=training_data, target=target, numeric_features=features, silent=True, session_id=123)
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Train models and select the best
-    best_model = compare_models()
+    # Train model
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
 
-    # Save the model
-    save_model(best_model, save_path)
+    # Save model
+    joblib.dump(model, save_path)
 
 def load_trained_model(model_path: str):
     """
-    Loads a trained AutoML model.
+    Loads a trained machine learning model.
     
     Args:
         model_path (str): Path to the saved model file.
@@ -34,4 +37,4 @@ def load_trained_model(model_path: str):
     Returns:
         object: Loaded model.
     """
-    return load_model(model_path)
+    return joblib.load(model_path)

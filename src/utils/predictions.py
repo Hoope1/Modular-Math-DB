@@ -1,18 +1,40 @@
 import pandas as pd
 import plotly.graph_objects as go
-from pycaret.regression import load_model, predict_model
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.externals import joblib
+import numpy as np
 
-def load_prediction_model(model_path: str):
+def train_model(tests: pd.DataFrame, save_path: str = "models/prediction_model.pkl"):
     """
-    Loads the saved AutoML prediction model.
+    Trains a Random Forest Regressor and saves the trained model.
     
     Args:
-        model_path (str): Path to the saved model file.
+        tests (pd.DataFrame): DataFrame containing test data.
+        save_path (str): Path to save the trained model.
+    """
+    tests["Datum"] = pd.to_datetime(tests["Datum"]).astype(int) / 10**9
+    X = tests[["Datum", "Textaufgaben", "Raumvorstellung", "Gleichungen", "Brüche", "Grundrechenarten", "Zahlenraum"]]
+    y = tests["Gesamtpunkte"]
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+
+    joblib.dump(model, save_path)
+
+def load_model(model_path: str):
+    """
+    Loads the trained model.
+    
+    Args:
+        model_path (str): Path to the saved model.
     
     Returns:
-        object: Loaded AutoML model.
+        object: The trained model.
     """
-    return load_model(model_path)
+    return joblib.load(model_path)
 
 def generate_predictions(participant: str, tests: pd.DataFrame, model):
     """
@@ -21,7 +43,7 @@ def generate_predictions(participant: str, tests: pd.DataFrame, model):
     Args:
         participant (str): Name of the participant.
         tests (pd.DataFrame): DataFrame of tests.
-        model: Loaded AutoML model.
+        model: The trained model.
     
     Returns:
         pd.DataFrame: DataFrame with predicted scores.
@@ -30,13 +52,22 @@ def generate_predictions(participant: str, tests: pd.DataFrame, model):
     if participant_tests.empty:
         return pd.DataFrame()
 
-    # Prepare data for prediction
     last_test_date = pd.to_datetime(participant_tests["Datum"]).max()
     future_dates = pd.date_range(last_test_date, periods=60, freq="D")
-    prediction_data = pd.DataFrame({"Datum": future_dates})
-    
-    # Generate predictions
-    prediction_data["Predicted (%)"] = predict_model(model, data=prediction_data)["Label"]
+    future_timestamps = future_dates.astype(int) / 10**9
+
+    prediction_data = pd.DataFrame({
+        "Datum": future_timestamps,
+        "Textaufgaben": np.zeros(60),
+        "Raumvorstellung": np.zeros(60),
+        "Gleichungen": np.zeros(60),
+        "Brüche": np.zeros(60),
+        "Grundrechenarten": np.zeros(60),
+        "Zahlenraum": np.zeros(60),
+    })
+
+    prediction_data["Predicted (%)"] = model.predict(prediction_data)
+    prediction_data["Datum"] = future_dates
     return prediction_data
 
 def generate_prediction_chart(participant: str, tests: pd.DataFrame):
@@ -50,19 +81,15 @@ def generate_prediction_chart(participant: str, tests: pd.DataFrame):
     Returns:
         go.Figure: Plotly figure with the prediction chart.
     """
-    # Load model
-    model = load_prediction_model("models/prediction_model.pkl")
+    model = load_model("models/prediction_model.pkl")
     predictions = generate_predictions(participant, tests, model)
 
-    # Historical data
     participant_tests = tests[tests["Teilnehmer"] == participant]
     historical_dates = pd.to_datetime(participant_tests["Datum"])
     historical_scores = participant_tests["Gesamt (%)"]
 
-    # Create plot
     fig = go.Figure()
 
-    # Historical scores
     fig.add_trace(go.Scatter(
         x=historical_dates,
         y=historical_scores,
@@ -70,7 +97,6 @@ def generate_prediction_chart(participant: str, tests: pd.DataFrame):
         name="Historische Werte"
     ))
 
-    # Predictions
     if not predictions.empty:
         fig.add_trace(go.Scatter(
             x=predictions["Datum"],
@@ -79,7 +105,6 @@ def generate_prediction_chart(participant: str, tests: pd.DataFrame):
             name="Vorhersage"
         ))
 
-    # Layout
     fig.update_layout(
         title=f"Prognose für {participant}",
         xaxis_title="Datum",

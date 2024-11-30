@@ -3,50 +3,29 @@ import os
 
 def load_data(file_path: str) -> pd.DataFrame:
     """
-    Loads data from a CSV file into a Pandas DataFrame.
-    
+    Lädt die Teilnehmerdaten aus einer CSV-Datei.
+
     Args:
-        file_path (str): Path to the CSV file.
-    
+        file_path (str): Der Pfad zur Datei.
+
     Returns:
-        pd.DataFrame: Loaded DataFrame or an empty DataFrame if the file does not exist.
+        pd.DataFrame: Der geladene Datensatz.
     """
     if os.path.exists(file_path):
-        return pd.read_csv(file_path)
+        data = pd.read_csv(file_path, parse_dates=["Eintrittsdatum", "Austrittsdatum"])
+        return data
     else:
-        # Return an empty DataFrame with predefined columns
-        if "participants" in file_path:
-            return pd.DataFrame(columns=["Name", "SV-Nummer", "Berufswunsch", "Eintrittsdatum", "Austrittsdatum"])
-        elif "tests" in file_path:
-            return pd.DataFrame(columns=[
-                "Teilnehmer", "Datum", "Textaufgaben", "Raumvorstellung",
-                "Gleichungen", "Brüche", "Grundrechenarten", "Zahlenraum", "Gesamtpunkte"
-            ])
-        else:
-            return pd.DataFrame()
+        # Leere Datenstruktur, falls Datei nicht existiert
+        return pd.DataFrame(
+            columns=["Name", "SV-Nummer", "Eintrittsdatum", "Austrittsdatum", "Zielwert (%)"]
+        )
 
 def save_data(data: pd.DataFrame, file_path: str):
     """
-    Saves a Pandas DataFrame to a CSV file.
-    
+    Speichert die Teilnehmerdaten in eine CSV-Datei.
+
     Args:
-        data (pd.DataFrame): DataFrame to save.
-        file_path (str): Path to the CSV file.
+        data (pd.DataFrame): Der zu speichernde Datensatz.
+        file_path (str): Der Pfad zur Datei.
     """
     data.to_csv(file_path, index=False)
-
-def calculate_percentage(data: pd.DataFrame, categories: list) -> pd.DataFrame:
-    """
-    Calculates percentage scores for each category and the total score.
-    
-    Args:
-        data (pd.DataFrame): DataFrame containing raw scores.
-        categories (list): List of category column names to calculate percentages for.
-    
-    Returns:
-        pd.DataFrame: DataFrame with percentage scores added.
-    """
-    for category in categories:
-        data[f"{category} (%)"] = data[category] / 100 * 100  # Normalize to percentage
-    data["Gesamt (%)"] = data["Gesamtpunkte"] / 600 * 100  # Assuming total max points is 600
-    return data

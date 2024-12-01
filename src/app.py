@@ -1,12 +1,17 @@
+import sys
+import os
 import streamlit as st
 import pandas as pd
+
+# Sicherstellen, dass der Pfad korrekt ist
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from src.components.ui_elements import render_header, render_footer
 from src.components.table import render_participants_table
 from src.components.forms import render_participant_form, render_test_form
 from src.utils.data_processing import load_data, save_data
 from src.utils.predictions import train_h2o_automl, generate_h2o_predictions, generate_prediction_chart
 from src.utils.report_generation import generate_report
-import os
 
 # Konfigurationen
 DATA_FILE = "data/participants.csv"

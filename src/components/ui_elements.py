@@ -2,14 +2,16 @@ import streamlit as st
 
 def render_header():
     """
-    Renders the header of the Streamlit app with a title and description.
+    Rendert die Kopfzeile der Anwendung.
     """
-    st.title("Mathematik-Kurs Management Tool")
-    st.caption("Verwalten Sie Teilnehmer, Tests und Prognosen effizient.")
+    st.title("Mathematik-Kurs Teilnehmerverwaltung")
+    st.markdown("## Willkommen im Teilnehmerverwaltungssystem")
+    st.markdown("---")
 
 def render_footer():
     """
-    Renders a footer with credits or additional information.
+    Rendert die Fußzeile der Anwendung.
     """
     st.markdown("---")
-    st.markdown("Dieses Tool wurde entwickelt, um Mathematik-Kurse zu verwalten und zu optimieren.")
+    st.markdown("**Erstellt mit Streamlit und H2O AutoML**")
+    st.markdown("© 2024 Mathematik-Kurs Management")

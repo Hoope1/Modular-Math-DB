@@ -1,73 +1,61 @@
 import streamlit as st
 import pandas as pd
+from src.components.ui_elements import render_header, render_footer
+from src.components.table import render_participants_table
+from src.components.forms import render_participant_form, render_test_form
 from src.utils.data_processing import load_data, save_data
-from src.utils.predictions import (
-    train_h2o_automl,
-    generate_h2o_predictions,
-    generate_prediction_chart,
-)
+from src.utils.predictions import train_h2o_automl, generate_h2o_predictions, generate_prediction_chart
 from src.utils.report_generation import generate_report
 import os
 
-# Konfigurationsoptionen
-MODEL_PATH = "models/h2o_automl_model"
-DATA_PATH = "data/participants_data.csv"
+# Konfigurationen
+DATA_FILE = "data/participants.csv"
+MODEL_FILE = "models/h2o_model"
 
-# Daten laden
-data = load_data(DATA_PATH)
+# Lade Daten
+data = load_data(DATA_FILE)
 
-# Streamlit UI
-st.title("Mathematik-Kurs Teilnehmerverwaltung")
+# Streamlit-App
+render_header()
 
-# Teilnehmer-Tabellendarstellung
-st.header("Teilnehmerübersicht")
-st.dataframe(data)
+# Tabellenansicht
+st.subheader("Teilnehmerübersicht")
+render_participants_table(data)
 
 # Teilnehmer hinzufügen
-st.subheader("Teilnehmer hinzufügen")
-with st.form("add_participant"):
-    name = st.text_input("Name")
-    sv_number = st.text_input("SV-Nummer")
-    entry_date = st.date_input("Eintrittsdatum")
-    exit_date = st.date_input("Austrittsdatum")
-    target_score = st.number_input("Zielwert (%)", min_value=0, max_value=100, value=50)
-    submit = st.form_submit_button("Hinzufügen")
+render_participant_form(data, lambda updated_data: save_data(updated_data, DATA_FILE))
 
-    if submit:
-        new_participant = {
-            "Name": name,
-            "SV-Nummer": sv_number,
-            "Eintrittsdatum": entry_date,
-            "Austrittsdatum": exit_date,
-            "Zielwert (%)": target_score,
-        }
-        data = data.append(new_participant, ignore_index=True)
-        save_data(data, DATA_PATH)
-        st.success("Teilnehmer hinzugefügt!")
+# Testdaten hinzufügen
+selected_participant = st.selectbox("Wähle einen Teilnehmer für Tests:", data["Name"].unique())
+if selected_participant:
+    participant_data = data[data["Name"] == selected_participant]
+    render_test_form(data, selected_participant, lambda updated_data: save_data(updated_data, DATA_FILE))
 
-# Vorhersagen generieren
-st.subheader("Vorhersagen generieren")
-participant = st.selectbox("Teilnehmer auswählen", data["Name"].unique())
-if st.button("Vorhersagen erstellen"):
-    participant_data = data[data["Name"] == participant]
+# Modelltraining
+if st.button("Modell trainieren"):
+    st.info("Training startet...")
+    try:
+        train_h2o_automl(data, target_column="Zielwert (%)", model_path=MODEL_FILE)
+        st.success("Modell erfolgreich trainiert und gespeichert!")
+    except Exception as e:
+        st.error(f"Fehler beim Training: {str(e)}")
 
-    # H2O AutoML trainieren
-    train_h2o_automl(data, "Zielwert (%)", MODEL_PATH)
-
-    # Vorhersagen generieren
-    predictions = generate_h2o_predictions(participant_data, MODEL_PATH)
-
-    # Diagramm erstellen
-    chart = generate_prediction_chart(participant_data, predictions, participant)
-    st.plotly_chart(chart)
+# Vorhersagediagramm
+if selected_participant:
+    st.subheader(f"Vorhersagen für {selected_participant}")
+    try:
+        predictions = generate_h2o_predictions(participant_data, MODEL_FILE)
+        fig = generate_prediction_chart(participant_data, predictions, selected_participant)
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"Fehler beim Generieren der Vorhersagen: {str(e)}")
 
 # Bericht generieren
-st.subheader("Bericht generieren")
-report_participant = st.selectbox("Teilnehmer für Bericht", data["Name"].unique())
-if st.button("Bericht erstellen"):
-    report_path = generate_report(report_participant, data, MODEL_PATH)
-    st.success(f"Bericht erstellt: {report_path}")
+if st.button("Bericht generieren"):
+    try:
+        report_path = generate_report(selected_participant, data, MODEL_FILE)
+        st.success(f"Bericht erfolgreich generiert: {report_path}")
+    except Exception as e:
+        st.error(f"Fehler beim Generieren des Berichts: {str(e)}")
 
-# Fußzeile
-st.write("---")
-st.write("Mathematik-Kurs Teilnehmerverwaltung - Erstellt mit H2O AutoML")
+render_footer()
